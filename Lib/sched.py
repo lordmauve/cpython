@@ -25,19 +25,29 @@ has another way to reference private data (besides global variables).
 
 import time
 import heapq
-from collections import namedtuple
+import abc
 import threading
+from collections import namedtuple
 from time import monotonic as _time
+from functools import total_ordering
 
-__all__ = ["scheduler"]
+__all__ = ["scheduler", "Scheduler", "Waiter", "ConditionWaiter"]
 
+
+@total_ordering
 class Event(namedtuple('Event', 'time, priority, action, argument, kwargs')):
-    __slots__ = []
-    def __eq__(s, o): return (s.time, s.priority) == (o.time, o.priority)
-    def __lt__(s, o): return (s.time, s.priority) <  (o.time, o.priority)
-    def __le__(s, o): return (s.time, s.priority) <= (o.time, o.priority)
-    def __gt__(s, o): return (s.time, s.priority) >  (o.time, o.priority)
-    def __ge__(s, o): return (s.time, s.priority) >= (o.time, o.priority)
+    __slots__ = ()
+
+    def __eq__(s, o):
+        return (s.time, s.priority) == (o.time, o.priority)
+
+    def __lt__(s, o):
+        return (s.time, s.priority) < (o.time, o.priority)
+
+    def __call__(self):
+        """Execute the event."""
+        return self.action(*self.argument, **self.kwargs)
+
 
 Event.time.__doc__ = ('''Numeric type compatible with the return value of the
 timefunc function passed to the constructor.''')
@@ -52,15 +62,64 @@ arguments for the action.''')
 
 _sentinel = object()
 
-class scheduler:
 
-    def __init__(self, timefunc=_time, delayfunc=time.sleep):
-        """Initialize a new instance, passing the time and delay
-        functions"""
+class Waiter(abc.ABC):
+    @abc.abstractmethod
+    def block(self, delay: float):
+        """Block for delay seconds, unless interrupted."""
+
+    @abc.abstractmethod
+    def interrupt(self):
+        """Interrupt threads that are waiting in block(), if any."""
+
+
+def scheduler(timefunc=_time, delayfunc=time.sleep, interruptfunc=None):
+    """Construct a Scheduler.
+
+    The scheduler uses timefunc to query the current time, delayfunc to
+    block and interruptfunc to interrupt the blocking.
+
+    If interruptfunc is not given then submitting new events will never
+    interrupt blocked threads. This can cause events to be run later
+    than scheduled when using multiple threads to submit events.
+
+    """
+    waiter = type('CustomWaiter', (Waiter,), {
+        'block': staticmethod(delayfunc),
+        'interrupt': staticmethod(interruptfunc or (lambda: None))
+    })()
+    return Scheduler(timefunc, waiter=waiter)
+
+
+class ConditionWaiter(Waiter):
+    """A timer that uses a threading.Condition to block threads."""
+
+    def __init__(self):
+        """Initialize a ConditionWaiter with a new condition variable."""
+        import threading
+        self._cond = threading.Condition()
+
+    def block(self, delay):
+        """Block for delay seconds."""
+        self._cond.wait(delay)
+
+    def interrupt(self):
+        """Interrupt currently waiting threads."""
+        self._cond.notify_all()
+
+
+class Scheduler:
+    def __init__(self, timefunc=_time, waiter=None):
+        """Initialize a new instance.
+
+        If a timer instance is given, it will be used for querying time and
+        blocking. Otherwise a new ConditionTimer will be used.
+
+        """
         self._queue = []
-        self._lock = threading.RLock()
+        self._lock = threading.Lock()
         self.timefunc = timefunc
-        self.delayfunc = delayfunc
+        self.waiter = waiter or ConditionWaiter()
 
     def enterabs(self, time, priority, action, argument=(), kwargs=_sentinel):
         """Enter a new event in the queue at an absolute time.
@@ -72,18 +131,34 @@ class scheduler:
         if kwargs is _sentinel:
             kwargs = {}
         event = Event(time, priority, action, argument, kwargs)
+        q = self._queue
         with self._lock:
+            if q and time < q[0].time:
+                # We're holding the lock, so we can interrupt now even though
+                # we haven't added the new event yet.
+                self.waiter.interrupt()
             heapq.heappush(self._queue, event)
-        return event # The ID
+        return event  # The ID
 
     def enter(self, delay, priority, action, argument=(), kwargs=_sentinel):
-        """A variant that specifies the time as a relative time.
-
-        This is actually the more commonly used interface.
-
-        """
+        """Schedule action with delay and priority."""
         time = self.timefunc() + delay
         return self.enterabs(time, priority, action, argument, kwargs)
+
+    def schedule(
+            self, delay, callback,
+            args=(),
+            kwargs=_sentinel,
+            *, priority=0):
+        """Schedule callback for delay seconds in the future.
+
+        This method is a convenience over `.enter()` in that `priority`
+        is an optional parameter.
+
+        .. versionadded:: 3.9
+
+        """
+        return self.enter(delay, priority, callback, args, kwargs)
 
     def cancel(self, event):
         """Remove an event from the queue.
@@ -103,9 +178,11 @@ class scheduler:
 
     def run(self, blocking=True):
         """Execute events until the queue is empty.
-        If blocking is False executes the scheduled events due to
+
+        If blocking is False, execute the scheduled events due to
         expire soonest (if any) and then return the deadline of the
-        next scheduled call in the scheduler.
+        next scheduled call in the scheduler, or None if no further
+        events are scheduled.
 
         When there is a positive delay until the first event, the
         delay function is called and the event is left in the queue;
@@ -125,31 +202,90 @@ class scheduler:
         runnable.
 
         """
+        if blocking:
+            for ev in self:
+                ev()
+                self.waiter.block(0)   # Let other threads run
+        else:
+            with self._lock:
+                delay = self.__next_delay()
+                if delay != 0:
+                    return delay
+                ev = heapq.heappop(self._queue)
+
+            ev()
+
+            with self._lock:
+                return self.__next_delay()
+
+    def __iter__(self):
+        """Iterate over scheduled events, instead of executing them.
+
+        The returned generator blocks until an event is due and then
+        yields the Event object. Calling the Event object dispatches
+        the event.
+
+        The iteration terminates when the queue is empty.
+
+        For example,
+
+            sch = scheduler()
+
+            ...
+
+            for ev in sch:
+                ev()
+
+        This can be used to capture the return value of events, handle
+        exceptions, or perform an action before each event is dispatched:
+
+            rows_modified = 0
+            for ev in sch:
+                try:
+                    rows_modified += ev()
+                except Exception:
+                    logging.exception("Error dispatching scheduled event")
+
+        """
+
         # localize variable access to minimize overhead
         # and to improve thread safety
         lock = self._lock
         q = self._queue
-        delayfunc = self.delayfunc
-        timefunc = self.timefunc
+        delayfunc = self.waiter.block
         pop = heapq.heappop
+
         while True:
             with lock:
-                if not q:
+                delay = self.__next_delay()
+
+                if delay is None:
                     break
-                time, priority, action, argument, kwargs = q[0]
-                now = timefunc()
-                if time > now:
-                    delay = True
-                else:
-                    delay = False
-                    pop(q)
+                elif delay == 0:
+                    ev = pop(q)
+
             if delay:
-                if not blocking:
-                    return time - now
-                delayfunc(time - now)
+                delayfunc(delay)
             else:
-                action(*argument, **kwargs)
-                delayfunc(0)   # Let other threads run
+                yield ev
+
+    def __next_delay(self):
+        """Get the delay until the next Event.
+
+        This function must be called with the lock held; we don't lock it
+        here for performance reasons.
+
+        Return 0 exactly if an Event is due now. Return None if there are
+        no more events scheduled.
+
+        """
+        q = self._queue
+        if not q:
+            return None
+
+        time = q[0].time
+        now = self.timefunc()
+        return max(time - now, 0)
 
     @property
     def queue(self):
@@ -164,4 +300,4 @@ class scheduler:
         # the actual order they would be retrieved.
         with self._lock:
             events = self._queue[:]
-        return list(map(heapq.heappop, [events]*len(events)))
+        return [heapq.heappop(events) for _ in iter(events.__len__, 0)]
