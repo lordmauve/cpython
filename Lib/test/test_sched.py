@@ -78,8 +78,7 @@ class TestCase(unittest.TestCase):
         scheduler = sched.scheduler(timer.time, timer.sleep)
         scheduler.enter(1, 1, fun, (1,))
         scheduler.enter(3, 1, fun, (3,))
-        t = threading.Thread(target=scheduler.run)
-        t.start()
+        t = thread_run(scheduler.run)
         timer.advance(1)
         self.assertEqual(q.get(timeout=TIMEOUT), 1)
         self.assertTrue(q.empty())
@@ -213,7 +212,7 @@ class ConditionWaiterTest(unittest.TestCase):
     """Tests for the ConditionWaiter class."""
 
     def setUp(self):
-        self.w = sched.ConditionWaiter()
+        self.w = sched._ConditionWaiter()
 
     def test_wait(self):
         """We can sleep for at least one ms."""

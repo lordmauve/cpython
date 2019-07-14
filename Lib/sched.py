@@ -22,16 +22,15 @@ arguments are be packed in a sequence) and keyword parameters in "kwargs".
 The action function may be an instance method so it
 has another way to reference private data (besides global variables).
 """
-
-import time
 import heapq
 import abc
 import threading
+import warnings
 from collections import namedtuple
 from time import monotonic as _time
 from functools import total_ordering
 
-__all__ = ["scheduler", "Scheduler", "Waiter", "ConditionWaiter"]
+__all__ = ["scheduler", "Scheduler", "Waiter"]
 
 
 @total_ordering
@@ -77,25 +76,7 @@ class Waiter(abc.ABC):
         """
 
 
-def scheduler(timefunc=_time, delayfunc=time.sleep, interruptfunc=None):
-    """Construct a Scheduler.
-
-    The scheduler uses timefunc to query the current time, delayfunc to
-    sleep and interruptfunc to interrupt the sleeping.
-
-    If interruptfunc is not given then submitting new events on a second
-    thread will not interrupt the thread running the Scheduler if it is
-    sleeping. This can cause events to be run later than scheduled.
-
-    """
-    waiter = type('CustomWaiter', (Waiter,), {
-        'sleep': staticmethod(delayfunc),
-        'interrupt': staticmethod(interruptfunc or (lambda: None))
-    })()
-    return Scheduler(timefunc, waiter=waiter)
-
-
-class ConditionWaiter(Waiter):
+class _ConditionWaiter(Waiter):
     """A timer that uses a threading.Condition to block threads."""
 
     def __init__(self):
@@ -113,18 +94,35 @@ class ConditionWaiter(Waiter):
             self._cond.notify_all()
 
 
+def scheduler(timefunc=_time, delayfunc=None):
+    """Construct a Scheduler.
+
+    The scheduler uses timefunc to query the current time.
+
+    If delayfunc is given, it will be used to block by the Scheduler
+    to block until the next scheduled event.
+
+    """
+    if delayfunc:
+        return _UninterruptibleScheduler(timefunc, delayfunc)
+    return Scheduler(timefunc)
+
+
 class Scheduler:
     def __init__(self, timefunc=_time, waiter=None):
         """Initialize a new instance.
 
-        If a timer instance is given, it will be used for querying time and
-        blocking. Otherwise a new ConditionTimer will be used.
+        If a Waiter instance is given, it will be used for the sleep
+        operations, as well as interrupting those operations when
+        necessary. Otherwise the waiter used is platform- and
+        implementation-dependent.
 
         """
         self._queue = []
         self._lock = threading.RLock()
         self.timefunc = timefunc
-        self.waiter = waiter or ConditionWaiter()
+        self.waiter = waiter or _ConditionWaiter()
+        self.running = False
 
     def enterabs(self, time, priority, action, argument=(), kwargs=_sentinel):
         """Enter a new event in the queue at an absolute time.
@@ -222,7 +220,8 @@ class Scheduler:
         delayfunc = self.waiter.sleep
         pop = heapq.heappop
 
-        while True:
+        self.running = True
+        while self.running:
             with lock:
                 if not q:
                     break
@@ -242,6 +241,52 @@ class Scheduler:
                 ev()
                 del ev  # don't hold reference to prev event into next sleep
 
+    def run_forever(self):
+        """Run the scheduler.
+
+        Even when the queue is empty, do not exit, unless explicitly stopped.
+
+        .. versionadded:: 3.9
+
+        """
+        # localize variable access to minimize overhead
+        # and to improve thread safety
+        lock = self._lock
+        q = self._queue
+        timefunc = self.timefunc
+        delayfunc = self.waiter.sleep
+        pop = heapq.heappop
+
+        self.running = True
+        while self.running:
+            with lock:
+                if q:
+                    time = q[0].time
+                    now = timefunc()
+
+                    delay = max(time - now, 0)
+                    if delay == 0:
+                        ev = pop(q)
+                else:
+                    # Nothing in the queue; wait for an arbitrary large
+                    # time, expecting to be interrupted
+                    delay = 86400
+
+            if delay:
+                delayfunc(delay)
+            else:
+                ev()
+                del ev  # don't hold reference to prev event into next sleep
+
+    def stop(self):
+        """Stop the running scheduler.
+
+        .. versionadded:: 3.9
+
+        """
+        self.running = False
+        self.waiter.interrupt()
+
     @property
     def queue(self):
         """An ordered list of upcoming events.
@@ -257,3 +302,64 @@ class Scheduler:
             events = self._queue[:]
 
         return [heapq.heappop(events) for _ in iter(events.__len__, 0)]
+
+
+class _UninterruptibleWaiter(Waiter):
+    """A waiter that doesn't provide the interrupt capability."""
+
+    def __init__(self, delayfunc):
+        """Initialise using a custom delay function."""
+        self._delayfunc = delayfunc
+        self._waiting = set()
+
+    def sleep(self, t):
+        """Sleep for t seconds using delayfunc."""
+        ident = threading.get_ident()
+        self._waiting.add(ident)
+        try:
+            self._delayfunc(t)
+        finally:
+            self._waiting.discard(ident)
+
+    def interrupt(self):
+        """Interrupt is not implemented for this waiter.
+
+        Warn if we're in a situation where it matters.
+        """
+        if self._waiting:
+            warnings.warn(
+                "Schedule changed while running, but interrupt() "
+                "is not supported()",
+                RuntimeWarning,
+                3
+            )
+
+    def __repr__(self):
+        return f'{type(self).__qualname__}({self.delayfunc!r})'
+
+
+class _UninterruptibleScheduler(Scheduler):
+    """A Scheduler constructed without passing an interruptfunc.
+
+    This scheduler fully implements older APIs but warns about situations
+    where they will cause issues.
+
+    """
+
+    def __init__(self, timefunc, delayfunc):
+        """Initialize a new instance.
+
+        If a timer instance is given, it will be used for querying time and
+        blocking. Otherwise a new ConditionTimer will be used.
+
+        """
+        super().__init__(
+            timefunc=timefunc,
+            waiter=_UninterruptibleWaiter(delayfunc),
+        )
+
+    def run_forever(self):
+        raise NotImplementedError(
+            "Scheduler.run_forever() is not available when using a custom "
+            "delayfunc, as this cannot be interrupted."
+        )
