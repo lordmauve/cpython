@@ -248,5 +248,117 @@ class TestTopologicalSort(unittest.TestCase):
         self.assertNotEqual(run2, "")
         self.assertEqual(run1, run2)
 
+
+class TestReverse(unittest.TestCase):
+    """Tests for graphlib.reverse()."""
+
+    def test_reverse_empty(self):
+        """An empty graph has an empty reverse."""
+        self.assertEqual(graphlib.reverse({}), {})
+
+    def test_reverse_simple(self):
+        """We can reverse a simple graph."""
+        graph = {"a": ["b", "c"]}
+        expected = {"b": {"a"}, "c": {"a"}, "a": set()}
+        self.assertEqual(graphlib.reverse(graph), expected)
+
+    def test_reverse_with_empty_dependencies(self):
+        """Nodes with no predecessors are included in the output."""
+        graph = {"a": []}
+        expected = {"a": set()}
+        self.assertEqual(graphlib.reverse(graph), expected)
+
+    def test_reverse_with_int_keys(self):
+        """Nodes may be any hashable type, such as int."""
+        graph = {1: {2, 3}, 2: {3}}
+        expected = {2: {1}, 3: {1, 2}, 1: set()}
+        self.assertEqual(graphlib.reverse(graph), expected)
+
+
+class TestAsTransitive(unittest.TestCase):
+    """Tests for graphlib.as_transitive()."""
+
+    def test_as_transitive_empty(self):
+        """An empty graph has an empty transitive closure."""
+        self.assertEqual(graphlib.as_transitive({}), {})
+
+    def test_as_transitive_no_dependencies(self):
+        """Nodes with no predecessors are included in the output."""
+        graph = {"a": [], "b": []}
+        expected = {"a": set(), "b": set()}
+        self.assertEqual(graphlib.as_transitive(graph), expected)
+
+    def test_as_transitive_simple(self):
+        """We can compute the transitive closure of a simple graph.
+
+        Given the input does not include "d" as a key, the output omits it.
+        """
+        graph = {"a": ["b"], "b": ["c", "e"], "c": ["d"]}
+        expected = {"a": {"b", "c", "d", "e"}, "b": {"c", "d", "e"}, "c": {"d"}}
+        self.assertEqual(graphlib.as_transitive(graph), expected)
+
+    def test_as_transitive_disjoint(self):
+        """We compute the transitive closure of disjoint subgraphs."""
+        graph = {"a": "b", "b": "c", 1: [2], 2: [3]}
+        expected = {"a": {"b", "c"}, "b": {"c"}, 1: {2, 3}, 2: {3}}
+        self.assertEqual(graphlib.as_transitive(graph), expected)
+
+    def test_as_transitive_with_tuple_keys(self):
+        """Nodes may be any hashable type, such as tuple."""
+        graph = {('a',): [('b',)], ('b',): [('c',)]}
+        expected = {('a',): {('b',), ('c',)}, ('b',): {('c',)}}
+        self.assertEqual(graphlib.as_transitive(graph), expected)
+
+    def test_as_transitive_with_int_keys_and_list_values(self):
+        """Nodes may be any hashable type, such as int."""
+        graph = {1: [2], 2: [3], 3: []}
+        expected = {1: {2, 3}, 2: {3}, 3: set()}
+        self.assertEqual(graphlib.as_transitive(graph), expected)
+
+    def test_as_transitive_cyclic(self):
+        """Raise CycleError if a cycle is detected."""
+        graph = {"a": ["b"], "b": ["c"], "c": ["a"]}
+        with self.assertRaises(graphlib.CycleError) as cm:
+            graphlib.as_transitive(graph)
+        self.assertEqual(
+            cm.exception.args,
+            ("nodes are in a cycle", ["c", "a", "b"]),
+        )
+
+
+class TestFilterGoals(unittest.TestCase):
+    """Tests for graphlib.filter_goals()."""
+
+    def test_filter_goals_single_goal(self):
+        """Fitler a graph to select transitive predecessors of a single goal."""
+        graph = {"a": ["b"], "b": ["c"], "d": ["e"]}
+        expected = {"a": {"b"}, "b": {"c"}}
+        self.assertEqual(graphlib.filter_goals(graph, ["a"]), expected)
+
+    def test_filter_goals_goal_not_present(self):
+        """If a goal is not present in the graph, raise ValueError."""
+        graph = {"a": ["b"], "b": ["c"], "d": ["e"]}
+        with self.assertRaises(ValueError):
+            graphlib.filter_goals(graph, ["x"])
+
+    def test_filter_goals_multiple_goals(self):
+        """Filter a graph to select multiple goals."""
+        graph = {"a": "bc", "b": "d", "c": "d", "d": "", "e": ""}
+        expected = {"a": set("bc"), "b": set("d"), "c": set("d"), "d": set()}
+        self.assertEqual(graphlib.filter_goals(graph, "ad"), expected)
+
+    def test_filter_goals_cyclic(self):
+        """Filtering a cyclic graph halts."""
+        graph = expected = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
+        graphlib.filter_goals(graph, ["a"])
+        self.assertEqual(graphlib.filter_goals(graph, ["a"]), expected)
+
+    def test_filter_goals_value_only(self):
+        """A goal only found as a predecessor is promoted to a key."""
+        graph = {"a": "bc"}
+        expected = {"c": set()}
+        self.assertEqual(graphlib.filter_goals(graph, ["c"]), expected)
+
+
 if __name__ == "__main__":
     unittest.main()
