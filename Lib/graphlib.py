@@ -284,23 +284,40 @@ def as_transitive(graph):
         >>> as_transitive({"a": ["b"], "b": ["c"]})
         {'a': {'b', 'c'}, 'b': {'c'}}
     """
-    closure = {}
+    unprocessed = graph.copy()
+    transitive_graph = {node: set() for node in graph}
 
-    def dfs(node, stack):
-        if node in closure:
-            return closure[node]
-        result = set()
-        for dep in graph.get(node, []):
-            result.add(dep)
-            if dep not in stack and dep in graph:
-                result |= dfs(dep, stack | {dep})
-        result.discard(node)
-        closure[node] = result
-        return result
+    while unprocessed:
+        node, deps = unprocessed.popitem()
 
-    for node in graph:
-        dfs(node, {node})
-    return closure
+        stack = [iter(deps)]
+        path = [node]
+
+        while stack:
+            try:
+                child = next(stack[-1])
+            except StopIteration:
+                stack.pop()
+                path.pop()
+                continue
+
+            try:
+                cycle_pos = path.index(child)
+            except ValueError:
+                pass
+            else:
+                cycle = path[cycle_pos:]
+                raise CycleError("nodes are in a cycle", cycle)
+
+            if (deps := unprocessed.pop(child, None)) is not None:
+                stack.append(iter(deps))
+                path.append(child)
+                continue
+
+            transitive_graph[node].add(child)
+            transitive_graph[node].update(transitive_graph.get(child, ()))
+
+    return transitive_graph
 
 
 def filter_goals(graph, goals):

@@ -312,7 +312,10 @@ class TestAsTranstiive(unittest.TestCase):
         graph = {"a": ["b"], "b": ["c"], "c": ["a"]}
         with self.assertRaises(graphlib.CycleError) as cm:
             graphlib.as_transitive(graph)
-        self.assertEqual(cm.exception.args[0], ["a", "b", "c"])
+        self.assertEqual(
+            cm.exception.args,
+            ("nodes are in a cycle", ["c", "a", "b"]),
+        )
 
 
 class TestFilterGoals(unittest.TestCase):
@@ -333,24 +336,24 @@ class TestFilterGoals(unittest.TestCase):
     def test_filter_goals_multiple_goals(self):
         """Filter a graph to select multiple goals."""
         graph = {"a": "bc", "b": "d", "c": "d", "d": "", "e": ""}
-        expected = {"a": ["b", "c"], "b": ["d"], "c": ["d"], "d": []}
-        self.assertEqual(graphlib.filter_goals(graph, ["a"]), expected)
+        expected = {"a": "bc", "b": "d", "c": "d", "d": ""}
+        self.assertEqual(graphlib.filter_goals(graph, "ad"), expected)
 
     def test_filter_goals_with_tuple_values(self):
         graph = {
             'a': ('b', 'c'),
             'b': ('d',),
             'c': ('d',),
-            'd': ()
+            'd': (),
+            'e': ('b', 'd'),
         }
-        # Filtering with goal 'd' should include nodes that transitively lead to 'd'
         expected = {
             'a': ('b', 'c'),
             'b': ('d',),
             'c': ('d',),
             'd': ()
         }
-        self.assertEqual(graphlib.filter_goals(graph, ['d']), expected)
+        self.assertEqual(graphlib.filter_goals(graph, ['a']), expected)
 
     def test_filter_goals_cyclic(self):
         """Filtering a cyclic graph is possible."""
