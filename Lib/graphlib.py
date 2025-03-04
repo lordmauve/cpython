@@ -248,3 +248,95 @@ class TopologicalSorter:
             self.done(*node_group)
 
     __class_getitem__ = classmethod(GenericAlias)
+
+
+def reverse(graph):
+    """Reverse the direction of the edges in a directed graph.
+
+    Given a mapping from nodes to collections of their dependencies,
+    construct a dict mapping each node to the set of nodes that depend on it.
+
+    Nodes that have no dependents appear as keys in the result, with an empty
+    set as value.
+
+    For example:
+
+        >>> reverse({"a": ["b", "c"], "d": []})
+        {'b': {'a'}, 'c': {'a'}, 'a': set(), 'd': set()}
+
+    """
+    result = {}
+    for node, deps in graph.items():
+        for dep in deps:
+            if dep not in result:
+                result[dep] = {node}
+            else:
+                result[dep].add(node)
+        if node not in result:
+            result[node] = set()
+    return result
+
+
+def as_transitive(graph):
+    """Compute the transitive closure of a dependency graph.
+
+    Examples:
+        >>> as_transitive({"a": ["b"], "b": ["c"]})
+        {'a': {'b', 'c'}, 'b': {'c'}}
+    """
+    closure = {}
+
+    def dfs(node, stack):
+        if node in closure:
+            return closure[node]
+        result = set()
+        for dep in graph.get(node, []):
+            result.add(dep)
+            if dep not in stack and dep in graph:
+                result |= dfs(dep, stack | {dep})
+        result.discard(node)
+        closure[node] = result
+        return result
+
+    for node in graph:
+        dfs(node, {node})
+    return closure
+
+
+def filter_goals(graph, goals):
+    """Return the items of graph that are predecessors of the given goals.
+
+    This can be used to determine the minimal set of nodes that must be
+    processed if only a subset of the nodes in the graph are pursued.
+
+    For example::
+
+        >>> filter_goals({"a": ["b"], "b": ["c"], "d": ["c", "e"]}, goals=["a"])
+        {'a': ['b'], 'b': ['c']}
+    """
+    # N.B. For efficiency in large graphs we do this without computing the
+    # transitive closure of the whole graph.
+    result = {}
+    goals = set(goals)
+    stack = list(goals)
+    while stack:
+        node = stack.pop()
+        if node in result:
+            continue
+        deps = graph.get(node)
+        if deps is not None:
+            result[node] = deps
+            stack.extend(d for d in deps if d not in result)
+
+    missing = goals - result.keys()
+    if missing:
+        # If we didn't find the goals in the keys of graph,
+        # check that they exist in values, and raise if they don't.
+        for deps in graph.values():
+            missing.difference_update(deps)
+            if not missing:
+                break
+        else:
+            raise ValueError("goals not found in graph", missing)
+
+    return result
