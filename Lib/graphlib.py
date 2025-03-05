@@ -1,6 +1,9 @@
 from types import GenericAlias
 
-__all__ = ["TopologicalSorter", "CycleError"]
+__all__ = [
+    "TopologicalSorter", "CycleError", "reverse", "as_transitive",
+    "filter_goals",
+]
 
 _NODE_OUT = -1
 _NODE_DONE = -2
@@ -280,39 +283,44 @@ def reverse(graph):
 def as_transitive(graph):
     """Compute the transitive closure of a dependency graph.
 
+    If the input graph contains cycles, raise CycleError.
+
+    The returned dict will contain the same keys as the input graph, but the
+    values will be sets of transitive predecessors of the key, rather than
+    direct predecessors.
+
     Examples:
         >>> as_transitive({"a": ["b"], "b": ["c"]})
         {'a': {'b', 'c'}, 'b': {'c'}}
     """
-    unprocessed = graph.copy()
+    unprocessed = dict(graph)
     transitive_graph = {node: set() for node in graph}
 
     while unprocessed:
         node, deps = unprocessed.popitem()
 
         stack = [iter(deps)]
-        path = [node]
+        path = [node]  # Ordering for cycle detection
+        seen = {node}  # Fast test for cycle detection
 
         while stack:
             try:
                 child = next(stack[-1])
             except StopIteration:
                 stack.pop()
-                path.pop()
+                seen.remove(path.pop())
                 continue
 
-            try:
-                cycle_pos = path.index(child)
-            except ValueError:
-                pass
-            else:
-                cycle = path[cycle_pos:]
+            if child in seen:
+                cycle = path[path.index(child):]
                 raise CycleError("nodes are in a cycle", cycle)
 
             if (deps := unprocessed.pop(child, None)) is not None:
-                stack.append(iter(deps))
-                path.append(child)
-                continue
+                if deps:
+                    stack.append(iter(deps))
+                    path.append(child)
+                    seen.add(child)
+                    continue
 
             transitive_graph[node].add(child)
             transitive_graph[node].update(transitive_graph.get(child, ()))
@@ -326,13 +334,21 @@ def filter_goals(graph, goals):
     This can be used to determine the minimal set of nodes that must be
     processed if only a subset of the nodes in the graph are pursued.
 
+    The keys in the returned dict are those within the transitive closure of the
+    goals, but this function does not compute the full closure, and therefore
+    it does not check for cycles in the graph, and does not raise CycleError.
+    If there are cycles within the predecessors of the goals, these cycles will
+    be included in the result.
+
+    If the goals are not found in the graph, ValueError is raised.
+
     For example::
 
-        >>> filter_goals({"a": ["b"], "b": ["c"], "d": ["c", "e"]}, goals=["a"])
-        {'a': ['b'], 'b': ['c']}
+        >>> filter_goals({"a": ["b"], "b": ["c"], "d": ["e"]}, goals=["a", "e"])
+        {'a': {'b'}, 'b': {'c'}, "e": set()}
     """
-    # N.B. For efficiency in large graphs we do this without computing the
-    # transitive closure of the whole graph.
+
+    # Depth-first search to find the transitive closure of the goals
     result = {}
     goals = set(goals)
     stack = list(goals)
@@ -342,18 +358,21 @@ def filter_goals(graph, goals):
             continue
         deps = graph.get(node)
         if deps is not None:
-            result[node] = deps
+            result[node] = set(deps)
             stack.extend(d for d in deps if d not in result)
 
+    # If we didn't find all goals by depth-first search, we must scan all
+    # values to find the missing ones.
+    # We create keys for the missing goals and raise if they don't exist.
     missing = goals - result.keys()
     if missing:
-        # If we didn't find the goals in the keys of graph,
-        # check that they exist in values, and raise if they don't.
         for deps in graph.values():
-            missing.difference_update(deps)
+            found = missing.intersection(deps)
+            for f in found:
+                result[f] = set()
+                missing.difference_update(found)
             if not missing:
                 break
         else:
             raise ValueError("goals not found in graph", missing)
-
     return result
