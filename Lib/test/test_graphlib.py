@@ -322,7 +322,7 @@ class TestAsTransitive(unittest.TestCase):
             graphlib.as_transitive(graph)
         self.assertEqual(
             cm.exception.args,
-            ("nodes are in a cycle", ["c", "a", "b"]),
+            ("nodes are in a cycle", ["c", "b", "a", "c"]),
         )
 
 

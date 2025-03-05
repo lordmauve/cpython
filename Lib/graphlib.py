@@ -309,7 +309,7 @@ def as_transitive(graph):
                 continue
 
             if child in seen:
-                cycle = path[path.index(child):]
+                cycle = [child, *reversed(path[path.index(child):])]
                 raise CycleError("nodes are in a cycle", cycle)
 
             if (deps := unprocessed.pop(child, None)) is not None:
