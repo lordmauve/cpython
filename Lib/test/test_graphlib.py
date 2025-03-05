@@ -326,39 +326,5 @@ class TestAsTransitive(unittest.TestCase):
         )
 
 
-class TestFilterGoals(unittest.TestCase):
-    """Tests for graphlib.filter_goals()."""
-
-    def test_filter_goals_single_goal(self):
-        """Fitler a graph to select transitive predecessors of a single goal."""
-        graph = {"a": ["b"], "b": ["c"], "d": ["e"]}
-        expected = {"a": {"b"}, "b": {"c"}}
-        self.assertEqual(graphlib.filter_goals(graph, ["a"]), expected)
-
-    def test_filter_goals_goal_not_present(self):
-        """If a goal is not present in the graph, raise ValueError."""
-        graph = {"a": ["b"], "b": ["c"], "d": ["e"]}
-        with self.assertRaises(ValueError):
-            graphlib.filter_goals(graph, ["x"])
-
-    def test_filter_goals_multiple_goals(self):
-        """Filter a graph to select multiple goals."""
-        graph = {"a": "bc", "b": "d", "c": "d", "d": "", "e": ""}
-        expected = {"a": set("bc"), "b": set("d"), "c": set("d"), "d": set()}
-        self.assertEqual(graphlib.filter_goals(graph, "ad"), expected)
-
-    def test_filter_goals_cyclic(self):
-        """Filtering a cyclic graph halts."""
-        graph = expected = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
-        graphlib.filter_goals(graph, ["a"])
-        self.assertEqual(graphlib.filter_goals(graph, ["a"]), expected)
-
-    def test_filter_goals_value_only(self):
-        """A goal only found as a predecessor is promoted to a key."""
-        graph = {"a": "bc"}
-        expected = {"c": set()}
-        self.assertEqual(graphlib.filter_goals(graph, ["c"]), expected)
-
-
 if __name__ == "__main__":
     unittest.main()
