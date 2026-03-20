@@ -454,6 +454,10 @@ Other language changes
 * Several error messages incorrectly using the term "argument" have been corrected.
   (Contributed by Stan Ulbrych in :gh:`133382`.)
 
+* :meth:`str.removeprefix` and :meth:`str.removesuffix` now accept a tuple
+  of strings, removing the longest matching prefix or suffix.
+  (Contributed by Daniel Pope.)
+
 * The interpreter now tries to provide a suggestion when
   :func:`delattr` fails due to a missing attribute.
   When an attribute name that closely resembles an existing attribute is used,

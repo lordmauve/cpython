@@ -2434,14 +2434,23 @@ expression support in the :mod:`re` module).
    ``string[len(prefix):]``. Otherwise, return a copy of the original
    string:
 
+   If *prefix* is a tuple of strings, remove the longest matching prefix from
+   the tuple.
+
    .. doctest::
 
       >>> 'TestHook'.removeprefix('Test')
       'Hook'
       >>> 'BaseTestCase'.removeprefix('Test')
       'BaseTestCase'
+      >>> 'BaseTestCase'.removeprefix(('Base', 'Test'))
+      'TestCase'
+      >>> 'BaseTestCase'.removeprefix(('Test', 'BaseTest'))
+      'Case'
 
    .. versionadded:: 3.9
+   .. versionchanged:: 3.15
+      *prefix* now accepts a tuple of strings.
 
    See also :meth:`removesuffix` and :meth:`startswith`.
 
@@ -2452,14 +2461,23 @@ expression support in the :mod:`re` module).
    return ``string[:-len(suffix)]``. Otherwise, return a copy of the
    original string:
 
+   If *suffix* is a tuple of strings, remove the longest matching suffix from
+   the tuple.
+
    .. doctest::
 
       >>> 'MiscTests'.removesuffix('Tests')
       'Misc'
       >>> 'TmpDirMixin'.removesuffix('Tests')
       'TmpDirMixin'
+      >>> 'IntegrationTests'.removesuffix(('s', 'Tests'))
+      'Integration'
+      >>> 'IntegrationTests'.removesuffix(('Tests', 'tionTests'))
+      'Integra'
 
    .. versionadded:: 3.9
+   .. versionchanged:: 3.15
+      *suffix* now accepts a tuple of strings.
 
    See also :meth:`removeprefix` and :meth:`endswith`.
 
