@@ -1008,31 +1008,14 @@ PyDoc_STRVAR(unicode_removeprefix__doc__,
 "\n"
 "Return a str with the given prefix string removed if present.\n"
 "\n"
-"If the string starts with the prefix string, return string[len(prefix):].\n"
+"If *prefix* is a tuple of strings, remove the longest matching prefix from\n"
+"the tuple.\n"
+"\n"
+"If the string starts with *prefix*, return ``string[len(prefix):]``.\n"
 "Otherwise, return a copy of the original string.");
 
 #define UNICODE_REMOVEPREFIX_METHODDEF    \
     {"removeprefix", (PyCFunction)unicode_removeprefix, METH_O, unicode_removeprefix__doc__},
-
-static PyObject *
-unicode_removeprefix_impl(PyObject *self, PyObject *prefix);
-
-static PyObject *
-unicode_removeprefix(PyObject *self, PyObject *arg)
-{
-    PyObject *return_value = NULL;
-    PyObject *prefix;
-
-    if (!PyUnicode_Check(arg)) {
-        _PyArg_BadArgument("removeprefix", "argument", "str", arg);
-        goto exit;
-    }
-    prefix = arg;
-    return_value = unicode_removeprefix_impl(self, prefix);
-
-exit:
-    return return_value;
-}
 
 PyDoc_STRVAR(unicode_removesuffix__doc__,
 "removesuffix($self, suffix, /)\n"
@@ -1040,32 +1023,15 @@ PyDoc_STRVAR(unicode_removesuffix__doc__,
 "\n"
 "Return a str with the given suffix string removed if present.\n"
 "\n"
-"If the string ends with the suffix string and that suffix is not empty,\n"
-"return string[:-len(suffix)]. Otherwise, return a copy of the original\n"
-"string.");
+"If *suffix* is a tuple of strings, remove the longest matching suffix from\n"
+"the tuple.\n"
+"\n"
+"If the string ends with *suffix* and that suffix is not empty, return\n"
+"``string[:-len(suffix)]``.\n"
+"Otherwise, return a copy of the original string.");
 
 #define UNICODE_REMOVESUFFIX_METHODDEF    \
     {"removesuffix", (PyCFunction)unicode_removesuffix, METH_O, unicode_removesuffix__doc__},
-
-static PyObject *
-unicode_removesuffix_impl(PyObject *self, PyObject *suffix);
-
-static PyObject *
-unicode_removesuffix(PyObject *self, PyObject *arg)
-{
-    PyObject *return_value = NULL;
-    PyObject *suffix;
-
-    if (!PyUnicode_Check(arg)) {
-        _PyArg_BadArgument("removesuffix", "argument", "str", arg);
-        goto exit;
-    }
-    suffix = arg;
-    return_value = unicode_removesuffix_impl(self, suffix);
-
-exit:
-    return return_value;
-}
 
 PyDoc_STRVAR(unicode_rfind__doc__,
 "rfind($self, sub[, start[, end]], /)\n"
@@ -1908,4 +1874,4 @@ skip_optional_pos:
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=238917fe66120bde input=a9049054013a1b77]*/
+/*[clinic end generated code: output=74e29f9966ccd019 input=a9049054013a1b77]*/

@@ -12590,24 +12590,67 @@ unicode_replace_impl(PyObject *self, PyObject *old, PyObject *new,
 @permit_long_docstring_body
 str.removeprefix as unicode_removeprefix
 
-    prefix: unicode
+    prefix as subobj: object
     /
 
 Return a str with the given prefix string removed if present.
 
-If the string starts with the prefix string, return string[len(prefix):].
+If *prefix* is a tuple of strings, remove the longest matching prefix from
+the tuple.
+
+If the string starts with *prefix*, return ``string[len(prefix):]``.
 Otherwise, return a copy of the original string.
 [clinic start generated code]*/
 
 static PyObject *
-unicode_removeprefix_impl(PyObject *self, PyObject *prefix)
-/*[clinic end generated code: output=f1e5945e9763bcb9 input=1989a856dbb813f1]*/
+unicode_removeprefix(PyObject *self, PyObject *subobj)
+/*[clinic end generated code: output=a98c580a652aa647 input=b7bb4010476011ac]*/
 {
-    int match = tailmatch(self, prefix, 0, PY_SSIZE_T_MAX, -1);
-    if (match == -1) {
-        return NULL;
+    PyObject *prefix = NULL;
+
+    if (PyTuple_Check(subobj)) {
+        Py_ssize_t longest = -1;
+
+        for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(subobj); i++) {
+            PyObject *substring = PyTuple_GET_ITEM(subobj, i);
+            if (!PyUnicode_Check(substring)) {
+                PyErr_Format(PyExc_TypeError,
+                             "tuple for removeprefix must only contain str, "
+                             "not %.100s",
+                             Py_TYPE(substring)->tp_name);
+                return NULL;
+            }
+            int result = tailmatch(self, substring, 0, PY_SSIZE_T_MAX, -1);
+            if (result < 0) {
+                return NULL;
+            }
+            if (result) {
+                Py_ssize_t size = PyUnicode_GET_LENGTH(substring);
+                if (size > longest) {
+                    prefix = substring;
+                    longest = size;
+                }
+            }
+        }
     }
-    if (match) {
+    else {
+        if (!PyUnicode_Check(subobj)) {
+            PyErr_Format(PyExc_TypeError,
+                         "removeprefix first arg must be str or "
+                         "a tuple of str, not %.100s",
+                         Py_TYPE(subobj)->tp_name);
+            return NULL;
+        }
+        int result = tailmatch(self, subobj, 0, PY_SSIZE_T_MAX, -1);
+        if (result < 0) {
+            return NULL;
+        }
+        if (result) {
+            prefix = subobj;
+        }
+    }
+
+    if (prefix != NULL) {
         return PyUnicode_Substring(self, PyUnicode_GET_LENGTH(prefix),
                                    PyUnicode_GET_LENGTH(self));
     }
@@ -12617,25 +12660,68 @@ unicode_removeprefix_impl(PyObject *self, PyObject *prefix)
 /*[clinic input]
 str.removesuffix as unicode_removesuffix
 
-    suffix: unicode
+    suffix as subobj: object
     /
 
 Return a str with the given suffix string removed if present.
 
-If the string ends with the suffix string and that suffix is not empty,
-return string[:-len(suffix)]. Otherwise, return a copy of the original
-string.
+If *suffix* is a tuple of strings, remove the longest matching suffix from
+the tuple.
+
+If the string ends with *suffix* and that suffix is not empty, return
+``string[:-len(suffix)]``.
+Otherwise, return a copy of the original string.
 [clinic start generated code]*/
 
 static PyObject *
-unicode_removesuffix_impl(PyObject *self, PyObject *suffix)
-/*[clinic end generated code: output=d36629e227636822 input=12cc32561e769be4]*/
+unicode_removesuffix(PyObject *self, PyObject *subobj)
+/*[clinic end generated code: output=ba0af6f19f1ac280 input=48bdc03b37094f02]*/
 {
-    int match = tailmatch(self, suffix, 0, PY_SSIZE_T_MAX, +1);
-    if (match == -1) {
-        return NULL;
+    PyObject *suffix = NULL;
+
+    if (PyTuple_Check(subobj)) {
+        Py_ssize_t longest = -1;
+
+        for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(subobj); i++) {
+            PyObject *substring = PyTuple_GET_ITEM(subobj, i);
+            if (!PyUnicode_Check(substring)) {
+                PyErr_Format(PyExc_TypeError,
+                             "tuple for removesuffix must only contain str, "
+                             "not %.100s",
+                             Py_TYPE(substring)->tp_name);
+                return NULL;
+            }
+            int result = tailmatch(self, substring, 0, PY_SSIZE_T_MAX, +1);
+            if (result < 0) {
+                return NULL;
+            }
+            if (result) {
+                Py_ssize_t size = PyUnicode_GET_LENGTH(substring);
+                if (size > longest) {
+                    suffix = substring;
+                    longest = size;
+                }
+            }
+        }
     }
-    if (match) {
+    else {
+        if (!PyUnicode_Check(subobj)) {
+            PyErr_Format(PyExc_TypeError,
+                         "removesuffix first arg must be str or "
+                         "a tuple of str, not %.100s",
+                         Py_TYPE(subobj)->tp_name);
+            return NULL;
+        }
+        int result = tailmatch(self, subobj, 0, PY_SSIZE_T_MAX, +1);
+        if (result < 0) {
+            return NULL;
+        }
+        if (result) {
+            suffix = subobj;
+        }
+    }
+
+    if (suffix != NULL) {
         return PyUnicode_Substring(self, 0, PyUnicode_GET_LENGTH(self)
                                             - PyUnicode_GET_LENGTH(suffix));
     }

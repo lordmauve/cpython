@@ -816,12 +816,18 @@ class BaseTest:
         self.checkequal('', '', 'removeprefix', 'abcde')
         self.checkequal('abcde', 'abcde', 'removeprefix', '')
         self.checkequal('', 'abcde', 'removeprefix', 'abcde')
+        self.checkequal('stCase', 'BaseTestCase', 'removeprefix',
+                        ('x', 'Ba', 'BaseTe'))
+        self.checkequal('bar', 'foobar', 'removeprefix', ('f', 'foo'))
+        self.checkequal('bar', 'foobar', 'removeprefix', ('foo', 'f'))
+        self.checkequal('foobar', 'foobar', 'removeprefix', ('x', 'y'))
+        self.checkequal('foobar', 'foobar', 'removeprefix', ('x', ''))
 
         self.checkraises(TypeError, 'hello', 'removeprefix')
         self.checkraises(TypeError, 'hello', 'removeprefix', 42)
         self.checkraises(TypeError, 'hello', 'removeprefix', 42, 'h')
         self.checkraises(TypeError, 'hello', 'removeprefix', 'h', 42)
-        self.checkraises(TypeError, 'hello', 'removeprefix', ("he", "l"))
+        self.checkraises(TypeError, 'hello', 'removeprefix', ('he', 1))
 
     def test_removesuffix(self):
         self.checkequal('sp', 'spam', 'removesuffix', 'am')
@@ -834,12 +840,18 @@ class BaseTest:
         self.checkequal('', '', 'removesuffix', 'abcde')
         self.checkequal('abcde', 'abcde', 'removesuffix', '')
         self.checkequal('', 'abcde', 'removesuffix', 'abcde')
+        self.checkequal('BaseTe', 'BaseTestCase', 'removesuffix',
+                        ('x', 'ase', 'stCase'))
+        self.checkequal('foo', 'foobar', 'removesuffix', ('r', 'bar'))
+        self.checkequal('foo', 'foobar', 'removesuffix', ('bar', 'r'))
+        self.checkequal('foobar', 'foobar', 'removesuffix', ('x', 'y'))
+        self.checkequal('foobar', 'foobar', 'removesuffix', ('x', ''))
 
         self.checkraises(TypeError, 'hello', 'removesuffix')
         self.checkraises(TypeError, 'hello', 'removesuffix', 42)
         self.checkraises(TypeError, 'hello', 'removesuffix', 42, 'h')
         self.checkraises(TypeError, 'hello', 'removesuffix', 'h', 42)
-        self.checkraises(TypeError, 'hello', 'removesuffix', ("lo", "l"))
+        self.checkraises(TypeError, 'hello', 'removesuffix', ('lo', 1))
 
     def test_capitalize(self):
         self.checkequal(' hello ', ' hello ', 'capitalize')

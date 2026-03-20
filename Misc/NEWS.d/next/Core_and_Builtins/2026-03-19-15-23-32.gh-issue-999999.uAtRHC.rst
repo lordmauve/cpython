@@ -1,0 +1,2 @@
+:meth:`str.removeprefix` and :meth:`str.removesuffix` now accept tuples of
+strings and remove the longest matching prefix or suffix.
